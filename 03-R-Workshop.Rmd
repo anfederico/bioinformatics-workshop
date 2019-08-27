@@ -1,30 +1,46 @@
 ---
 title: "R Workshop"
-subtitle: "BUBWTF"
+subtitle: "BUB WTF"
 output:
   html_document:
     theme: cosmo
     toc: yes 
-    toc_float: yes
-  html_notebook:
-    toc: yes
 ---
 
 ```{r global, echo=FALSE}
-knitr::opts_chunk$set(message=FALSE, warning=FALSE, eval=TRUE)
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, eval=FALSE)
 ```
+
+# Intro
+
+For today's workshop, we're going to use R to go through a typical bioinformatics analysis workflow. We're going to use common bioinformatics techniques to pre-process and analyze gene expression data related to breast cancer. 
+
+The data we will analyze is breast cancer RNA-Seq data from [TCGA](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga), a popular publicly-available database for cancer-related datasets. The goal of the analysis will be to identify genes that show significant changes in expression between normal and tumor tissues, followed by identifying the pathways they are associated with. After importing the data and performing some data pre-processing, we will carry out differntial expression analysis and gene set enrichment analysis.
+
+Main steps in today's workshop:
+
+1. Import and pre-process RNA-Seq data
+2. Identify differentially-expressed genes between tumor and control samples
+3. Identify significantly-enriched pathways in the gene sets
+
+
+Make sure to have the following packages installed for this workshop:
+
+* `dplyr`
+* `DESeq2`
+* `fgsea`
+* `ggplot2`
 
 # Working with Expression Set Objects
 An expression set is a data object consisting of three entities: the
 expression matrix (`exprs`), the phenotye data (`pData`), and the
 feature data (`fData`).
 
-![Expression Set Object](media/eset.png)
 
 We upload an expression set already available. It corresponds to a subset of samples from a gene expression dataset of head and neck squamous carcinoma (HNSC) primary tissue samples from the TCGA project.
 
 ```{r readdata}
-brca <- readRDS("data/TCGA-BRCA.rds")
+brca <- readRDS("bioinformatics-workshop-master/data/TCGA-BRCA.rds")
 
 # the expression data
 dim(brca)
@@ -45,43 +61,131 @@ dim(pData(tmp))
 dim(fData(tmp))
 ```
 
-# Variation Filtering
+# Data Wrangling
+
+**NOTE TO ANTHONY: filter out samples labeled 'metastatic'? want two sample types for comparison. also potential practice here could be to change the sample_type column values to just 'tumor' or 'normal'.**
+
+### Variation Filtering
 ```{r echo=FALSE}
-brca.1 <- brca[apply(exprs(brca), 1, var) != 0,]
+brca.filtered <- brca[apply(exprs(brca), 1, var) != 0,]
 ```
 
 ```{r eval=FALSE}
-brca.1 <- ...
+brca.filtered <- ...
 ```
 
 ```{r}
-dim(brca.1)
+dim(brca.filtered)
 ```
 
-# Low-Counts Filtering
+### Low-Counts Filtering
 ```{r echo=FALSE}
-brca.2 <- brca.1[apply(exprs(brca.1) != 0, 1, sum)/ncol(brca.1) >= 1/20,]
+brca.filtered <- brca.filtered[apply(exprs(brca.filtered) != 0, 1, sum)/ncol(brca.filtered) >= 1/20,]
 ```
 
 ```{r eval=FALSE}
-brca.2 <- ...
+brca.filtered <- ...
 ```
 
 ```{r}
-dim(brca.2)
+dim(brca.filtered)
 ```
 
-# RNA-seq Data Normalization
-```{r}
+### Log-transfromation
+
+It is common to log2-transform RNA-Seq data because.... pseudocount...
+
+**NOTE TO ANTHONY: DESeq2 takes raw counts matrix as input. We can have the students log-transform just for practice, but make sure it's a separate variable that's not used downstream.**
+
+### Normalization
+
+**NOTE TO ANTHONY: same as above**
+
+# Differential Expression Analysis
+
+Differential expression analysis aims to find genes that show a significant change in expression levels between two conditions. Some of the commonly-used R packages for this analysis include *DESeq2*, *edgeR*, and *limma*. For this workshop, we will use *DESeq2* to identify genes that are differentially-expressed between normal and tumor tissue in our dataset. The [DESeq2 vignette](http://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html) offers an in-depth tutorial that could be helpful for completing this section of the workshop.
+
+### Set up DESeq2 object
+
+The first step is to create a `DESeqDataSet` object. This object includes a variable `design` which should be set to the variables that will be used in the model (e.g. variable to compare, confounding factors). Note that DESeq2 takes the raw counts matrix (un-normalized, not log2-transformed) as input.
+
+Hint: use the `DESeqDataSetFromMatrix` function to set up this object using our filtered counts matrix.
+
+```{r deseq2object}
+#import package
 library(DESeq2)
-# DESeq2 Normalization
-brca.rle <- brca.rle.log <- brca.2
-dds <- DESeqDataSetFromMatrix(exprs(brca.2), pData(brca.2), formula( ~ 1)) # Create DEseq2 specific object
-dds.rle <- estimateSizeFactors(dds) # Estimate scaling factors
-exprs(brca.rle) <- counts(dds.rle, normalized=TRUE) # Get counts
-exprs(brca.rle.log) <- log(exprs(brca.rle) + 1, 2) # Calculate log2 counts
+
+# Create DESeq2 specific object
+dds <- DESeqDataSetFromMatrix(countData = exprs(brca.filtered),
+                              colData = pData(brca.filtered),
+                              design = formula( ~ sample_type)) 
 ```
 
-```{r}
-exprs(brca.rle.log)[1:10,1:2]
+### Relevel factors
+
+Before we continue, we should set our normal tissue samples as our reference level for comparison in our differential expression analysis.
+
+Hint: use the `relevel` function.
+
+```{r relevelFactor}
+# Set reference level to 'normal'
+dds@colData$sample_type <- relevel(dds@colData$sample_type, ref = "Solid Tissue Normal")
 ```
+
+### Run DESeq2
+
+Now we can perform the differential expression test and store the results as a table. The results show us the mean expression of the gene, the log fold change in expression between the two sample types, along with p-values and adjusted p-values (FDR) for each gene.
+
+```{r rundeseq2}
+# Run DESeq2
+dds <- DESeq(dds)
+
+# Store results in separate variable
+res <- results(dds)
+
+# Show results for first few genes
+head(res)
+```
+
+### MA Plot
+
+DESeq2 contains a function `plotMA` that generates an MA Plot commonly used to visualize the differential expression results. The plot shows the log2 fold changes of a given variable over the mean of normalized counts for all the samples. Points represent genes and will be colored red if the adjusted p-value is less than 0.1. Points which fall out of the window are plotted as open triangles pointing either up or down.
+
+```{r plotMA}
+plotMA(res, ylim=c(-2,2))
+```
+
+### Significant genes
+
+Let's add a column that tell us whether each gene shows significant log fold change between tissues. Using the `mutate` function from the `dplyr` package, we can add a column showing the significance based on a cutoff value of padj < 0.1.
+
+Hint: convert the results table to a data frame first.
+
+```{r addSigGenes}
+# Convert to data frame
+res <- as.data.frame(res)
+
+# Add column with significant genes
+res <- mutate(res, sig = padj < 0.1)
+
+# Check first few genes after adding significance column
+head(res)
+```
+
+### Volcano plot
+
+Volcano plots are another common way to visualize differential expression results. It shows the log2 fold change on the x-axis and the log10-transformed adjusted p-value on the y-axis (`-1*log10(padj)`), with the points colored according to whether they are significant or not. We can use `ggplot` to create a volcano plot for our results.
+
+```{r volcanoPlot}
+# Volcano plot
+ggplot(res, aes(log2FoldChange, -1*log10(padj), col=sig)) + 
+  geom_point() + 
+  ggtitle("Volcano plot")
+```
+
+# Gene Set Enrichment Analysis
+
+TBD Anthony
+
+
+***&copy; The Boys***
