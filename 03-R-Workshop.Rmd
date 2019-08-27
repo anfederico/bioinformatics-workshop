@@ -1,0 +1,87 @@
+---
+title: "R Workshop"
+subtitle: "BUBWTF"
+output:
+  html_document:
+    theme: cosmo
+    toc: yes 
+    toc_float: yes
+  html_notebook:
+    toc: yes
+---
+
+```{r global, echo=FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, eval=TRUE)
+```
+
+# Working with Expression Set Objects
+An expression set is a data object consisting of three entities: the
+expression matrix (`exprs`), the phenotye data (`pData`), and the
+feature data (`fData`).
+
+![Expression Set Object](media/eset.png)
+
+We upload an expression set already available. It corresponds to a subset of samples from a gene expression dataset of head and neck squamous carcinoma (HNSC) primary tissue samples from the TCGA project.
+
+```{r readdata}
+brca <- readRDS("data/TCGA-BRCA.rds")
+
+# the expression data
+dim(brca)
+# the gene annotation
+dim(fData(brca))
+#the phenotypic annotation
+dim(pData(brca))
+
+head(fData(brca)[,c("ensembl_transcript_id", "ensembl_gene_id", "hgnc_symbol")])
+head(pData(brca)[,c("patient_id", "sample_type", "tumor_subtype")])
+```
+
+One of the advantages of using an ExpressionSet is that the three component objects are always properly paired, and subsetting can be carried out straightforwardly.
+```{r subsetting}
+tmp <- brca[1:100,1:10]
+dim(tmp)
+dim(pData(tmp))
+dim(fData(tmp))
+```
+
+# Variation Filtering
+```{r echo=FALSE}
+brca.1 <- brca[apply(exprs(brca), 1, var) != 0,]
+```
+
+```{r eval=FALSE}
+brca.1 <- ...
+```
+
+```{r}
+dim(brca.1)
+```
+
+# Low-Counts Filtering
+```{r echo=FALSE}
+brca.2 <- brca.1[apply(exprs(brca.1) != 0, 1, sum)/ncol(brca.1) >= 1/20,]
+```
+
+```{r eval=FALSE}
+brca.2 <- ...
+```
+
+```{r}
+dim(brca.2)
+```
+
+# RNA-seq Data Normalization
+```{r}
+library(DESeq2)
+# DESeq2 Normalization
+brca.rle <- brca.rle.log <- brca.2
+dds <- DESeqDataSetFromMatrix(exprs(brca.2), pData(brca.2), formula( ~ 1)) # Create DEseq2 specific object
+dds.rle <- estimateSizeFactors(dds) # Estimate scaling factors
+exprs(brca.rle) <- counts(dds.rle, normalized=TRUE) # Get counts
+exprs(brca.rle.log) <- log(exprs(brca.rle) + 1, 2) # Calculate log2 counts
+```
+
+```{r}
+exprs(brca.rle.log)[1:10,1:2]
+```
