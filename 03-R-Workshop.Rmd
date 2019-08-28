@@ -7,8 +7,8 @@ output:
     toc: yes 
 ---
 
-```{r global, echo=FALSE}
-knitr::opts_chunk$set(message=FALSE, warning=FALSE, eval=FALSE)
+```{r global, echo=F}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, eval=FALSE, cache=F)
 ```
 
 # Intro
@@ -26,6 +26,7 @@ Main steps in today's workshop:
 
 Make sure to have the following packages installed for this workshop:
 
+* `Biobase`
 * `dplyr`
 * `DESeq2`
 * `fgsea`
@@ -36,11 +37,19 @@ An expression set is a data object consisting of three entities: the
 expression matrix (`exprs`), the phenotye data (`pData`), and the
 feature data (`fData`).
 
+We upload an expression set already available. It corresponds to a subset of samples from a gene expression dataset of breast cancer (BRCA) primary tissue samples from the TCGA project.
 
-We upload an expression set already available. It corresponds to a subset of samples from a gene expression dataset of head and neck squamous carcinoma (HNSC) primary tissue samples from the TCGA project.
+```{r, eval=T}
+library(Biobase)
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(DESeq2)
+library(fgsea)
+```
 
-```{r readdata}
-brca <- readRDS("bioinformatics-workshop-master/data/TCGA-BRCA.rds")
+```{r readdata, eval=T}
+brca <- readRDS("data/TCGA-BRCA.rds")
 
 # the expression data
 dim(brca)
@@ -51,10 +60,13 @@ dim(pData(brca))
 
 head(fData(brca)[,c("ensembl_transcript_id", "ensembl_gene_id", "hgnc_symbol")])
 head(pData(brca)[,c("patient_id", "sample_type", "tumor_subtype")])
+
+table(pData(brca)$sample_type)
+table(pData(brca)$tumor_subtype)
 ```
 
 One of the advantages of using an ExpressionSet is that the three component objects are always properly paired, and subsetting can be carried out straightforwardly.
-```{r subsetting}
+```{r subsetting, eval=T}
 tmp <- brca[1:100,1:10]
 dim(tmp)
 dim(pData(tmp))
@@ -63,43 +75,91 @@ dim(fData(tmp))
 
 # Data Wrangling
 
-**NOTE TO ANTHONY: filter out samples labeled 'metastatic'? want two sample types for comparison. also potential practice here could be to change the sample_type column values to just 'tumor' or 'normal'.**
+Do the following:  
+1. Extract the phenotype dataframe from the expression set  
+2. Filter out "Metastatic" tumors  
+3. Keep only "Solid Tissue Normal" samples and "Primary Tumor" samples subtyped as "Basal"  
+4. Rename entries in the "sample_type" colunn as "tumor" and "normal"  
+5. Subset the original expression set by the filtered samples  
+6. Replace the pData slot with the updated data frame  
 
-### Variation Filtering
-```{r echo=FALSE}
-brca.filtered <- brca[apply(exprs(brca), 1, var) != 0,]
-```
+```{r echo=F, eval=T}
+pdat <- pData(brca) %>%
+        filter(sample_type != "Metastatic") %>%
+        filter(sample_type == "Solid Tissue Normal" | tumor_subtype == "Basal") %>%
+        mutate(sample_type=ifelse(sample_type == "Primary Tumor", "tumor", "normal")) %>%
+        set_rownames(.[,"full_id"])
 
-```{r eval=FALSE}
-brca.filtered <- ...
+brca.sub <- brca[,rownames(pdat)]
+pData(brca.sub) <- pdat
 ```
 
 ```{r}
+brca.sub <- ...
+```
+
+```{r, eval=T}
+dim(brca.sub)
+table(brca.sub$sample_type)
+table(brca.sub$tumor_subtype)
+```
+
+### Variation Filtering
+Filter out genes that have zero variance across samples.
+```{r echo=F, eval=T}
+brca.filtered <- brca.sub[apply(exprs(brca.sub), 1, var) != 0,]
+```
+
+```{r}
+brca.filtered <- ...
+```
+
+```{r, eval=T}
 dim(brca.filtered)
 ```
 
 ### Low-Counts Filtering
-```{r echo=FALSE}
-brca.filtered <- brca.filtered[apply(exprs(brca.filtered) != 0, 1, sum)/ncol(brca.filtered) >= 1/20,]
-```
-
-```{r eval=FALSE}
-brca.filtered <- ...
+Filter out genes that have zero counts in at least 1/5 of samples.
+```{r echo=F, eval=T}
+brca.filtered <- brca.filtered[apply(exprs(brca.filtered) != 0, 1, sum)/ncol(brca.filtered) >= 1/5,]
 ```
 
 ```{r}
+brca.filtered <- ...
+```
+
+```{r, eval=T}
 dim(brca.filtered)
 ```
 
-### Log-transfromation
-
-It is common to log2-transform RNA-Seq data because.... pseudocount...
-
-**NOTE TO ANTHONY: DESeq2 takes raw counts matrix as input. We can have the students log-transform just for practice, but make sure it's a separate variable that's not used downstream.**
-
 ### Normalization
+```{r, eval=T, echo=F}
+brca.rle <- brca.rle.log <- brca.filtered
+dds <- DESeqDataSetFromMatrix(exprs(brca.filtered), pData(brca.filtered), formula( ~ 1)) # Create DEseq2 specific object
+dds.rle <- estimateSizeFactors(dds) # Estimate scaling factors
+exprs(brca.rle) <- counts(dds.rle, normalized=TRUE) # Get counts
+```
 
-**NOTE TO ANTHONY: same as above**
+```{r}
+brca.rle <- ...
+```
+
+```{r, eval=T}
+exprs(brca.rle)[1:5,1:2]
+```
+
+### Log-transfromation
+```{r, eval=T, echo=F}
+exprs(brca.rle.log) <- log(exprs(brca.rle) + 1, 2) # Calculate log2 counts
+```
+
+```{r}
+brca.rle.log <- ...
+```
+
+```{r, eval=T}
+exprs(brca.rle.log)[1:5,1:2]
+```
 
 # Differential Expression Analysis
 
@@ -111,14 +171,14 @@ The first step is to create a `DESeqDataSet` object. This object includes a vari
 
 Hint: use the `DESeqDataSetFromMatrix` function to set up this object using our filtered counts matrix.
 
-```{r deseq2object}
+```{r deseq2object, eval=T}
 #import package
 library(DESeq2)
 
 # Create DESeq2 specific object
 dds <- DESeqDataSetFromMatrix(countData = exprs(brca.filtered),
                               colData = pData(brca.filtered),
-                              design = formula( ~ sample_type)) 
+                              design = formula(~sample_type)) 
 ```
 
 ### Relevel factors
@@ -127,16 +187,16 @@ Before we continue, we should set our normal tissue samples as our reference lev
 
 Hint: use the `relevel` function.
 
-```{r relevelFactor}
+```{r relevelFactor, eval=T}
 # Set reference level to 'normal'
-dds@colData$sample_type <- relevel(dds@colData$sample_type, ref = "Solid Tissue Normal")
+dds@colData$sample_type <- relevel(dds@colData$sample_type, ref = "normal")
 ```
 
 ### Run DESeq2
 
 Now we can perform the differential expression test and store the results as a table. The results show us the mean expression of the gene, the log fold change in expression between the two sample types, along with p-values and adjusted p-values (FDR) for each gene.
 
-```{r rundeseq2}
+```{r rundeseq2, eval=T}
 # Run DESeq2
 dds <- DESeq(dds)
 
@@ -151,7 +211,7 @@ head(res)
 
 DESeq2 contains a function `plotMA` that generates an MA Plot commonly used to visualize the differential expression results. The plot shows the log2 fold changes of a given variable over the mean of normalized counts for all the samples. Points represent genes and will be colored red if the adjusted p-value is less than 0.1. Points which fall out of the window are plotted as open triangles pointing either up or down.
 
-```{r plotMA}
+```{r plotMA, eval=T}
 plotMA(res, ylim=c(-2,2))
 ```
 
@@ -161,7 +221,7 @@ Let's add a column that tell us whether each gene shows significant log fold cha
 
 Hint: convert the results table to a data frame first.
 
-```{r addSigGenes}
+```{r addSigGenes, eval=T}
 # Convert to data frame
 res <- as.data.frame(res)
 
@@ -169,14 +229,14 @@ res <- as.data.frame(res)
 res <- mutate(res, sig = padj < 0.1)
 
 # Check first few genes after adding significance column
-head(res)
+head(res[,c(2,3,4,5)])
 ```
 
 ### Volcano plot
 
 Volcano plots are another common way to visualize differential expression results. It shows the log2 fold change on the x-axis and the log10-transformed adjusted p-value on the y-axis (`-1*log10(padj)`), with the points colored according to whether they are significant or not. We can use `ggplot` to create a volcano plot for our results.
 
-```{r volcanoPlot}
+```{r volcanoPlot, eval=T}
 # Volcano plot
 ggplot(res, aes(log2FoldChange, -1*log10(padj), col=sig)) + 
   geom_point() + 
@@ -185,7 +245,22 @@ ggplot(res, aes(log2FoldChange, -1*log10(padj), col=sig)) +
 
 # Gene Set Enrichment Analysis
 
-TBD Anthony
+```{r}
+library(msigdbr)
+msigdbr_show_species()
+mdf <- msigdbr(species="Homo sapiens", category="H") %>%
+       dplyr::select(gs_name, gene_symbol) %>%
+       as.data.frame() %>%
+       stats::aggregate(gene_symbol ~ gs_name, data=., c)
 
+# Convert to list
+gsets <- as.list(mdf$gene_symbol)
+names(gsets) <- mdf$gs_name
+```
+
+```{r}
+names(gsets)
+head(gsets$HALLMARK_APOPTOSIS)
+```
 
 ***&copy; The Boys***
