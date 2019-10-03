@@ -1,6 +1,6 @@
 ---
 title: "R Workshop"
-subtitle: "BUB WTF"
+subtitle: "10/04/2019"
 output:
   html_document:
     theme: cosmo
@@ -31,13 +31,17 @@ Make sure to have the following packages installed for this workshop:
 * `DESeq2`
 * `fgsea`
 * `ggplot2`
+* `msigdbr`
+* `fgsea`
 
 # Working with Expression Set Objects
 An expression set is a data object consisting of three entities: the
 expression matrix (`exprs`), the phenotye data (`pData`), and the
 feature data (`fData`).
 
-We upload an expression set already available. It corresponds to a subset of samples from a gene expression dataset of breast cancer (BRCA) primary tissue samples from the TCGA project.
+![](media/eset.png)
+
+We read in the RDS file included in this repo. It corresponds to a subset of samples from a gene expression dataset of breast cancer (BRCA) primary tissue samples from the TCGA project.
 
 ```{r, eval=T}
 library(Biobase)
@@ -51,35 +55,47 @@ library(fgsea)
 ```{r readdata, eval=T}
 brca <- readRDS("data/TCGA-BRCA.rds")
 
-# the expression data
+# dimensions of the expression data
 dim(brca)
-# the gene annotation
-dim(fData(brca))
-#the phenotypic annotation
-dim(pData(brca))
 
+# dimensions of the gene annotation
+dim(fData(brca))
+# first few rows of gene annotations
 head(fData(brca)[,c("ensembl_transcript_id", "ensembl_gene_id", "hgnc_symbol")])
+
+# dimensions of the phenotypic annotation
+dim(pData(brca))
+# first few rows of phenotype
 head(pData(brca)[,c("patient_id", "sample_type", "tumor_subtype")])
 
+# how many of each sample type?
 table(pData(brca)$sample_type)
+
+# how many tumor subtypes?
 table(pData(brca)$tumor_subtype)
 ```
 
 One of the advantages of using an ExpressionSet is that the three component objects are always properly paired, and subsetting can be carried out straightforwardly.
 ```{r subsetting, eval=T}
-tmp <- brca[1:100,1:10]
-dim(tmp)
-dim(pData(tmp))
-dim(fData(tmp))
+#subset first 100 genes and 10 samples
+brcaSubset <- brca[1:100,1:10]
+
+#updated dimensions after subsetting
+dim(brcaSubset)
+dim(pData(brcaSubset))
+dim(fData(brcaSubset))
 ```
 
 # Data Wrangling
 
+This section of the workshop will look at some of the common data pre-processing steps.
+
+### Pre-processing
 Do the following:  
 1. Extract the phenotype dataframe from the expression set  
 2. Filter out "Metastatic" tumors  
 3. Keep only "Solid Tissue Normal" samples and "Primary Tumor" samples subtyped as "Basal"  
-4. Rename entries in the "sample_type" colunn as "tumor" and "normal"  
+4. Rename entries in the "sample_type" column as "tumor" and "normal"  
 5. Subset the original expression set by the filtered samples  
 6. Replace the pData slot with the updated data frame  
 
@@ -98,6 +114,9 @@ pData(brca.sub) <- pdat
 brca.sub <- ...
 ```
 
+
+Your output should have the following dimensions:
+
 ```{r, eval=T}
 dim(brca.sub)
 table(brca.sub$sample_type)
@@ -114,6 +133,8 @@ brca.filtered <- brca.sub[apply(exprs(brca.sub), 1, var) != 0,]
 brca.filtered <- ...
 ```
 
+Your output should have the following dimensions:
+
 ```{r, eval=T}
 dim(brca.filtered)
 ```
@@ -128,37 +149,29 @@ brca.filtered <- brca.filtered[apply(exprs(brca.filtered) != 0, 1, sum)/ncol(brc
 brca.filtered <- ...
 ```
 
+Your output should have the following dimensions:
+
+
 ```{r, eval=T}
 dim(brca.filtered)
 ```
 
-### Normalization
+### Log-transformation
+
+Log-transform the counts. (Hint: what is log2(0)?)
 ```{r, eval=T, echo=F}
-brca.rle <- brca.rle.log <- brca.filtered
-dds <- DESeqDataSetFromMatrix(exprs(brca.filtered), pData(brca.filtered), formula( ~ 1)) # Create DEseq2 specific object
-dds.rle <- estimateSizeFactors(dds) # Estimate scaling factors
-exprs(brca.rle) <- counts(dds.rle, normalized=TRUE) # Get counts
+brca.filtered.log <- brca.filtered
+exprs(brca.filtered.log) <- log2(exprs(brca.filtered) + 1) # Calculate log2 counts
 ```
 
 ```{r}
-brca.rle <- ...
+brca.filtered.log <- ...
 ```
 
+
+Show first 5 rows and 2 samples after log-transformation:
 ```{r, eval=T}
-exprs(brca.rle)[1:5,1:2]
-```
-
-### Log-transfromation
-```{r, eval=T, echo=F}
-exprs(brca.rle.log) <- log(exprs(brca.rle) + 1, 2) # Calculate log2 counts
-```
-
-```{r}
-brca.rle.log <- ...
-```
-
-```{r, eval=T}
-exprs(brca.rle.log)[1:5,1:2]
+exprs(brca.filtered.log)[1:5,1:2]
 ```
 
 # Differential Expression Analysis
@@ -167,18 +180,29 @@ Differential expression analysis aims to find genes that show a significant chan
 
 ### Set up DESeq2 object
 
-The first step is to create a `DESeqDataSet` object. This object includes a variable `design` which should be set to the variables that will be used in the model (e.g. variable to compare, confounding factors). Note that DESeq2 takes the raw counts matrix (un-normalized, not log2-transformed) as input.
+The first step is to create a `DESeqDataSet` object. This object includes a variable `design` which should be set to the variables that will be used in the model (e.g. variable to compare, confounding factors). Note that DESeq2 takes the raw counts matrix (un-normalized, not log-transformed) as input, so use the `brca.filtered` object from the previous section..
 
 Hint: use the `DESeqDataSetFromMatrix` function to set up this object using our filtered counts matrix.
 
-```{r deseq2object, eval=T}
+```{r deseq2object, eval=T, echo=F}
+# Subset first 500 genes and 100 samples for faster run-time
+brca.subset <- brca.filtered[1:500,1:100]
+
 #import package
 library(DESeq2)
 
 # Create DESeq2 specific object
-dds <- DESeqDataSetFromMatrix(countData = exprs(brca.filtered),
-                              colData = pData(brca.filtered),
+dds <- DESeqDataSetFromMatrix(countData = exprs(brca.subset),
+                              colData = pData(brca.subset),
                               design = formula(~sample_type)) 
+```
+
+```{r}
+#import package
+library(DESeq2)
+
+# Create DESeq2 specific object
+dds <- ...
 ```
 
 ### Relevel factors
@@ -187,16 +211,30 @@ Before we continue, we should set our normal tissue samples as our reference lev
 
 Hint: use the `relevel` function.
 
-```{r relevelFactor, eval=T}
+```{r relevelFactor, eval=T, echo=F}
 # Set reference level to 'normal'
 dds@colData$sample_type <- relevel(dds@colData$sample_type, ref = "normal")
+```
+
+```{r}
+dds@colData$sample_type <- ...
 ```
 
 ### Run DESeq2
 
 Now we can perform the differential expression test and store the results as a table. The results show us the mean expression of the gene, the log fold change in expression between the two sample types, along with p-values and adjusted p-values (FDR) for each gene.
 
-```{r rundeseq2, eval=T}
+```{r}
+# Run DESeq2
+dds <- ...
+
+# Store results in separate variable
+res <- ...
+```
+
+First few rows of results should look like this:
+
+```{r rundeseq2, eval=T, echo=F}
 # Run DESeq2
 dds <- DESeq(dds)
 
@@ -217,19 +255,31 @@ plotMA(res, ylim=c(-2,2))
 
 ### Significant genes
 
-Let's add a column that tell us whether each gene shows significant log fold change between tissues. Using the `mutate` function from the `dplyr` package, we can add a column showing the significance based on a cutoff value of padj < 0.1.
+Let's add a column that tell us whether each gene shows significant log fold change between tissues. We can add a column showing the significance based on a cutoff value of padj < 0.05.
 
 Hint: convert the results table to a data frame first.
 
-```{r addSigGenes, eval=T}
-# Convert to data frame
+```{r}
+# Convert 'res' to data frame
+res <- ...
+
+# Add column with significant genes
+res$sig <- ...
+
+# Check first few genes after adding significance column
+head(res)
+```
+
+```{r addSigGenes, eval=T, echo=F}
+# Convert 'res' to data frame
 res <- as.data.frame(res)
 
 # Add column with significant genes
-res <- mutate(res, sig = padj < 0.1)
+res$sig = res$padj < 0.05
+res <- mutate(res, sig = padj < 0.05)
 
 # Check first few genes after adding significance column
-head(res[,c(2,3,4,5)])
+head(res)
 ```
 
 ### Volcano plot
