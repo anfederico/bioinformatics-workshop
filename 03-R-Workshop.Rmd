@@ -276,7 +276,6 @@ res <- as.data.frame(res)
 
 # Add column with significant genes
 res$sig = res$padj < 0.05
-res <- mutate(res, sig = padj < 0.05)
 
 # Check first few genes after adding significance column
 head(res)
@@ -295,7 +294,13 @@ ggplot(res, aes(log2FoldChange, -1*log10(padj), col=sig)) +
 
 # Gene Set Enrichment Analysis
 
-```{r}
+Although we've identified differentially expressed genes, we don't yet know whether the genes have an unifying biological connection. That's where gene set enrichment analysis (GSEA) comes in. GSEA is a method to identify classes of gene that are over-represented in a large gene set. The calculated enrichment score (ES) reflects the degree to which a gene set is over-represented at the extremes (top or bottom) of the entire ranked list.
+
+GSEA requires two inputs:
+1) ranked list of genes of interest - We will be using our differentially expressed genes, ranked by their log2 fold change.
+2) gene sets of biological pathways - A gene set should consist of all genes that are biological related or part of the same biological pathway. We can obtain these gene sets from the Molecular Signatures Database (MSigDB).
+
+```{r, eval=T}
 library(msigdbr)
 msigdbr_show_species()
 mdf <- msigdbr(species="Homo sapiens", category="H") %>%
@@ -308,9 +313,28 @@ gsets <- as.list(mdf$gene_symbol)
 names(gsets) <- mdf$gs_name
 ```
 
-```{r}
+```{r, eval=T}
 names(gsets)
 head(gsets$HALLMARK_APOPTOSIS)
+```
+
+```{r, eval=T}
+rankedlist <- res[res$sig,'log2FoldChange']
+names(rankedlist) <- row.names(res[res$sig,])
+rankedlist <- rankedlist[order(rankedlist)]
+head(rankedlist)
+```
+
+
+```{r, eval=T}
+fgseaRes <- fgsea(pathways = gsets,
+                  stats = rankedlist,
+                  nperm = 10000)
+head(fgseaRes[order(pval), ])
+```
+
+```{r, eval=T}
+plotEnrichment(gsets$HALLMARK_XENOBIOTIC_METABOLISM,rankedlist)
 ```
 
 ***&copy; The Boys***
