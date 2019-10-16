@@ -1,0 +1,136 @@
+---
+title: "Data Viz Workshop"
+subtitle: "10/18/2019"
+output:
+  html_document:
+    theme: cosmo
+    toc: yes 
+---
+
+```{r global}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, eval=T, cache=F)
+```
+
+# Intro
+
+For today's workshop, we're going to use R to go through a typical bioinformatics analysis workflow. We're going to use common bioinformatics techniques to visualize data and make beautiful figures. 
+
+The data we will analyze is breast cancer RNA-Seq data from [TCGA](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga), a popular publicly-available database for cancer-related datasets. The goal of the analysis will be to identify genes that show significant changes in expression between normal and tumor tissues, followed by identifying the pathways they are associated with. After importing the data and performing some data pre-processing, we will carry out differntial expression analysis and gene set enrichment analysis.
+
+Main steps in today's workshop:
+
+1. Import and pre-process RNA-Seq data
+2. Identify differentially-expressed genes between tumor and control samples
+3. Identify significantly-enriched pathways in the gene sets
+
+
+Make sure to have the following packages installed for this workshop:
+
+* `Biobase`
+* `dplyr`
+* `DESeq2`
+* `fgsea`
+* `ggplot2`
+* `msigdbr`
+* `fgsea`
+
+# Working with Expression Set Objects
+An expression set is a data object consisting of three entities: the
+expression matrix (`exprs`), the phenotye data (`pData`), and the
+feature data (`fData`).
+
+![](media/eset.png)
+
+We read in the RDS file included in this repo. It corresponds to a subset of samples from a gene expression dataset of breast cancer (BRCA) primary tissue samples from the TCGA project.
+
+```{r, eval=T}
+library(Biobase)
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(Biobase)
+library(ggfortify)
+library(plotly)
+```
+
+```{r readdata, eval=T}
+brca <- readRDS("data/TCGA-BRCA.rds")
+
+# dimensions of the expression data
+dim(brca)
+
+# dimensions of the gene annotation
+dim(fData(brca))
+# first few rows of gene annotations
+head(fData(brca)[,c("ensembl_transcript_id", "ensembl_gene_id", "hgnc_symbol")])
+
+# dimensions of the phenotypic annotation
+dim(pData(brca))
+# first few rows of phenotype
+head(pData(brca)[,c("patient_id", "sample_type", "tumor_subtype")])
+
+# how many of each sample type?
+table(pData(brca)$sample_type)
+
+# how many tumor subtypes?
+table(pData(brca)$tumor_subtype)
+```
+
+### Log transform the data set
+```{r}
+exprs(brca) <- log2(exprs(brca) + 1)
+exprs(brca)[1:5,1:5]
+```
+
+### PCA
+
+Start by ranking genes based on their variation across samples
+
+```{r}
+row.var <- sort(apply(exprs(brca), 1, var), decreasing=TRUE)
+head(row.var)
+```
+
+To save time, we'll run PCA on the top 2500 most variable genes
+
+```{r}
+df <- brca[names(row.var)[1:2500]] %>%
+      exprs() %>%
+      t() %>%
+      data.frame()
+    
+pca <- prcomp(df)
+pca.summary <- summary(pca)
+pca.summary$importance[,1:5]
+```
+
+### 2-D Plot
+
+```{r}
+df$tumor_subtype <- brca$tumor_subtype
+autoplot(pca, data=df, colour='tumor_subtype')
+```
+
+### 3-D Plot
+
+```{r}
+df.pca <- cbind(pca$x[,c(1:3)], brca$tumor_subtype) %>%
+          as.data.frame() %>%
+          set_colnames(c("PC1", "PC2", "PC3", "tumor_subtype"))
+
+head(df.pca)
+
+p <- plot_ly(df.pca,
+             x = ~PC1,
+             y = ~PC2,
+             z = ~PC3,
+             type="scatter3d",
+             mode = "markers",
+             color = ~tumor_subtype,
+             marker = list(size = 3))
+
+p
+```
+
+### Challenge: Do it in 4-D
+
