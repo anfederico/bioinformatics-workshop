@@ -226,7 +226,7 @@ geom_density(aes(fill=tumor_stage), alpha=0.5) +
 ylab("") +
 xlab("Density(PC1) ~ Basal Genes")
 ```
-s
+
 ### Q5
 Make a correlation plot of PC1 with age.
 ```{r, message=F, warning=F, echo=F}
