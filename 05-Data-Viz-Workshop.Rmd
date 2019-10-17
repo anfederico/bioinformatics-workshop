@@ -134,3 +134,121 @@ p
 
 ### Challenge: Do it in 4-D
 
+
+
+
+# Data Wrangling Questions
+
+## Example Dataset
+
+```{r}
+genes <- c("FOXA1","MLPH","AR","GATA3","DNALI1","FAM47E","RHOB","SPDEF",
+"SLC7A8","TTC6","CA12","SMIM14","C5AR2","SIDT1","NOSTRIN","CCDC125",
+"FAM198B-AS1","TBC1D9","SLC44A4","DYNLRB2","THSD4","FAM214A","GTF2IP7","SLC22A5",
+"CCDC170")
+
+pcs <- brca[genes,] %>%
+       exprs() %>%
+       t() %>%
+       data.frame() %>%
+       prcomp() %>%
+       .[["x"]]
+    
+df <- cbind(pcs[,"PC1",drop=F], pData(brca))
+
+head(df)
+```
+
+## Example
+```{r}
+ex1 <- df %>%
+       filter(!is.na(tumor_subtype)) %>%
+       group_by(tumor_subtype) %>%
+       summarize(PC1_mean = mean(PC1, na.rm=T))
+
+print(ex1)
+
+ggplot(data=ex1, aes(x=tumor_subtype, y=PC1_mean)) +
+geom_point(aes(shape=tumor_subtype, color=tumor_subtype), size=10)+
+ylab("PC1  ~ Basal Genes") +
+xlab("Tumor Subtype") +
+labs(title="Important Genes", 
+     subtitle="Average PC1 Across Tumor Subtypes",
+     caption="Figure 1: Example of data wrangling into ggplot")
+
+```
+
+### Q1
+Make a boxplot of PC1 across tumor subtypes.
+```{r, echo=F}
+df %>%
+filter(!is.na(tumor_subtype)) %>%
+group_by(tumor_subtype) %>%
+ggplot(aes(x=tumor_subtype, y=PC1)) +
+geom_boxplot(aes(color=tumor_subtype))+
+ylab("PC1 ~ Basal Genes") +
+xlab("Tumor Subtype")
+```
+
+### Q2
+Make a scatter of PC1 across tumor subtypes.
+```{r, echo=F}
+df %>%
+filter(!is.na(tumor_subtype)) %>%
+group_by(tumor_subtype) %>%
+ggplot(aes(x=tumor_subtype, y=PC1)) +
+geom_jitter(aes(color=tumor_subtype))+
+ylab("PC1 ~ Basal Genes") +
+xlab("Tumor Subtype")
+```
+
+### Q3
+Make a boxplot of PC1 across tumor stages within each gender.
+```{r, echo=F}
+df %>%
+filter(!is.na(tumor_stage)) %>%
+filter(gender %in% c("male", "female")) %>%
+group_by(gender) %>%
+ggplot(aes(x=gender, y=PC1, fill=tumor_stage)) +
+geom_boxplot() +
+ylab("PC1 ~ Basal Genes") +
+xlab("Gender")
+```
+
+### Q4
+Make a density plot of PC1 across tumor stages within females.
+```{r, echo=F}
+df %>%
+filter(tumor_stage %in% c("stage i", "stage x")) %>%
+filter(gender == "female") %>%
+ggplot(aes(PC1)) +
+geom_density(aes(fill=tumor_stage), alpha=0.5) + 
+ylab("") +
+xlab("Density(PC1) ~ Basal Genes")
+```
+s
+### Q5
+Make a correlation plot of PC1 with age.
+```{r, message=F, warning=F, echo=F}
+df.1 <- df %>%
+        mutate(age=as.numeric(age_at_diagnosis)) %>%
+        filter(tumor_subtype == "Basal") %>%
+        filter(!is.na(age))
+
+x_ <- df.1$age
+y_ <- df.1$PC1
+
+r <- cor.test(x_, y_)
+text <- paste('\n', strrep(" ", 20), 'cor = ', round(r$estimate, 5), '\n', 
+               strrep(" ", 20), 'pval = ', round(r$p.value,5 ), sep="")
+minx <- min(x_, na.rm = TRUE)
+maxy <- max(y_, na.rm = TRUE)   
+
+ggplot(df.1, aes(x=age, y=PC1)) +
+geom_point(na.rm=TRUE) + 
+geom_smooth(method=lm, na.rm=TRUE) +
+xlab("Age (Days)") +
+ylab("PC1 ~ Basal Geness") +
+annotate("text", x=minx, y=maxy, label=text, size = 4)
+```
+
