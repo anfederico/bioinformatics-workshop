@@ -48,9 +48,10 @@ library(Biobase)
 library(magrittr)
 library(dplyr)
 library(ggplot2)
-library(Biobase)
 library(ggfortify)
 library(plotly)
+library(superheat)
+library(ComplexHeatmap)
 ```
 
 ```{r readdata, eval=T}
@@ -134,6 +135,39 @@ p
 
 ### Challenge: Do it in 4-D
 
+### Heatmap
+Now, let's draw a heatmap for the **top 100 most variable genes**. 
+You will need to:
+* Hide the row and column names (genes and samples respectively) as there are too many
+* Add row annotation as color bars for the **Tumor Subtype** and the **Sample Type**
+* Plot PC 1 and 2 as line charts on the top of the heatmap to see if there is any association of PCs to tumor subtypes
+* Plot the mean expression of each gene as bar charts on the right of the plot
+* Split the heatmap into reasonable number of clusters for row and columns (using `k-means partitioning`) to see if each cluster contains certain tumor subtypes
+
+The package we will be using is called `ComplexHeatmap`. While other packages like `superheat` or `pheatmap` could serve similar purposes, the `ComplexHeatmap`, as the name suggests, provide the most comprehensive functionality for drawing a complicated heatmap with tons of information. Once you got familiar with it, it will be relatively easy to learn the other packages.
+```{r}
+dat <- brca[names(row.var)[1:100]]
+
+ca <- HeatmapAnnotation(Tumor_Subtype = pData(dat)$tumor_subtype,
+                        Sample_Subtype = pData(dat)$sample_type, 
+                        annotation_name_side = "left",
+                        PC1 = anno_lines(pca$x[,1]),
+                        PC2 = anno_lines(pca$x[,2]))
+
+ra <- rowAnnotation(Mean = anno_barplot(apply(exprs(dat), 1, mean)))
+
+Heatmap(exprs(dat),
+        show_row_names = FALSE,
+        show_column_names = FALSE,
+        column_title = "TCGA BRCA Samples",
+        row_title = "Top 100 Variable Genes",
+        top_annotation = ca,
+        right_annotation = ra,
+        column_km = 5,
+        row_km = 3)
+
+
+```
 
 
 
