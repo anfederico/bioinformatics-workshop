@@ -50,8 +50,9 @@ library(dplyr)
 library(ggplot2)
 library(ggfortify)
 library(plotly)
-library(superheat)
+library(pheatmap)
 library(ComplexHeatmap)
+library(RColorBrewer)
 ```
 
 ```{r readdata, eval=T}
@@ -136,18 +137,42 @@ p
 ### Challenge: Do it in 4-D
 
 ### Heatmap
-Now, let's draw a heatmap for the **top 100 most variable genes**. 
+
+#### Basic Heatmap with annotations
+
+First, let's draw a heatmap for the **top 100 most variable genes**. This could be done easily with `pheatmap`.
 You will need to:
 * Hide the row and column names (genes and samples respectively) as there are too many
 * Add row annotation as color bars for the **Tumor Subtype** and the **Sample Type**
+* Make sure to scale by each gene so the colors make sense
+# Hint: it is always adviced to use red for high values and blue for low values in heatmaps
+
+```{r}
+dat <- brca[names(row.var)[1:100]]
+pheatmap(exprs(dat),
+         color = rev(brewer.pal(11, "RdBu")),
+         annotation_col = data.frame(Tumor_Subtype = pData(dat)$tumor_subtype,
+                        Sample_Subtype = pData(dat)$sample_type, 
+                        row.names = row.names(pData(dat))),
+         show_rownames = F,
+         show_colnames = F,
+         clustering_distance_rows = "euclidean", 
+         clustering_distance_cols="euclidean",
+         scale= "row"
+)
+```
+
+#### Heatmap with marginal plots
+
+Next, with the same set of genes, let's add some marginal plots.
+You will need to:
 * Plot PC 1 and 2 as line charts on the top of the heatmap to see if there is any association of PCs to tumor subtypes
 * Plot the mean expression of each gene as bar charts on the right of the plot
 * Split the heatmap into reasonable number of clusters for row and columns (using `k-means partitioning`) to see if each cluster contains certain tumor subtypes
 
 The package we will be using is called `ComplexHeatmap`. While other packages like `superheat` or `pheatmap` could serve similar purposes, the `ComplexHeatmap`, as the name suggests, provide the most comprehensive functionality for drawing a complicated heatmap with tons of information. Once you got familiar with it, it will be relatively easy to learn the other packages.
-```{r}
-dat <- brca[names(row.var)[1:100]]
 
+```{r}
 ca <- HeatmapAnnotation(Tumor_Subtype = pData(dat)$tumor_subtype,
                         Sample_Subtype = pData(dat)$sample_type, 
                         annotation_name_side = "left",
@@ -165,8 +190,6 @@ Heatmap(exprs(dat),
         right_annotation = ra,
         column_km = 5,
         row_km = 3)
-
-
 ```
 
 
