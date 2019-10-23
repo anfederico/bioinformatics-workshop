@@ -1,6 +1,6 @@
 ---
-title: "Data Viz Workshop"
-subtitle: "10/18/2019"
+title: "Data Visualization Workshop"
+subtitle: "10/25/2019"
 output:
   html_document:
     theme: cosmo
@@ -15,24 +15,20 @@ knitr::opts_chunk$set(message=FALSE, warning=FALSE, eval=T, cache=F)
 
 For today's workshop, we're going to use R to go through a typical bioinformatics analysis workflow. We're going to use common bioinformatics techniques to visualize data and make beautiful figures. 
 
-The data we will analyze is breast cancer RNA-Seq data from [TCGA](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga), a popular publicly-available database for cancer-related datasets. The goal of the analysis will be to identify genes that show significant changes in expression between normal and tumor tissues, followed by identifying the pathways they are associated with. After importing the data and performing some data pre-processing, we will carry out differntial expression analysis and gene set enrichment analysis.
-
-Main steps in today's workshop:
-
-1. Import and pre-process RNA-Seq data
-2. Identify differentially-expressed genes between tumor and control samples
-3. Identify significantly-enriched pathways in the gene sets
+The data we will analyze is breast cancer RNA-Seq data from [TCGA](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga), a popular publicly-available database for cancer-related datasets.
 
 
 Make sure to have the following packages installed for this workshop:
 
 * `Biobase`
+* `magrittr`
 * `dplyr`
-* `DESeq2`
-* `fgsea`
 * `ggplot2`
-* `msigdbr`
-* `fgsea`
+* `ggfortify`
+* `plotly`
+* `pheatmap`
+* `ComplexHeatmap`
+* `RColorBrewer`
 
 # Working with Expression Set Objects
 An expression set is a data object consisting of three entities: the
@@ -44,6 +40,7 @@ feature data (`fData`).
 We read in the RDS file included in this repo. It corresponds to a subset of samples from a gene expression dataset of breast cancer (BRCA) primary tissue samples from the TCGA project.
 
 ```{r, eval=T}
+#packages we will need for this workshop
 library(Biobase)
 library(magrittr)
 library(dplyr)
@@ -86,14 +83,14 @@ exprs(brca)[1:5,1:5]
 
 ### PCA
 
-Start by ranking genes based on their variation across samples
+Start by ranking genes based on their variation across samples.
 
 ```{r}
 row.var <- sort(apply(exprs(brca), 1, var), decreasing=TRUE)
 head(row.var)
 ```
 
-To save time, we'll run PCA on the top 2500 most variable genes
+To save time, we'll run PCA on the top 2500 most variable genes.
 
 ```{r}
 df <- brca[names(row.var)[1:2500]] %>%
@@ -134,13 +131,12 @@ p <- plot_ly(df.pca,
 p
 ```
 
-### Challenge: Do it in 4-D
 
-### Heatmap
+### Heatmaps
 
 #### Basic Heatmap with annotations
 
-First, let's draw a heatmap for the **top 100 most variable genes**. This could be done easily with `pheatmap`.
+First, let's draw a heatmap for the **top 100 most variable genes**. This can be easily done with `pheatmap`.
 You will need to:
 * Hide the row and column names (genes and samples respectively) as there are too many
 * Add row annotation as color bars for the **Tumor Subtype** and the **Sample Type**
